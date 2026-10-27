@@ -5087,7 +5087,7 @@ dependencies = [
 
 [[package]]
 name = "x-studio"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crc32fast",
  "serde",
@@ -5123,7 +5123,7 @@ dependencies = [
 
 [[package]]
 name = "x4-books"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
  "encoding_rs",
@@ -5137,7 +5137,7 @@ dependencies = [
 
 [[package]]
 name = "x4-device"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crc32fast",
  "serde",
