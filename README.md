@@ -40,6 +40,11 @@ Full release — version bump, tests, universal build, notarization, tag and Git
 double-click `Release.command`, or run `scripts/release.sh 0.2.0`. Artifacts land in `release/<tag>/`.
 `scripts/notarize-release.sh <tag>` re-notarizes an existing release and replaces its files.
 
+`npm run verify` checks the newest build the way Gatekeeper does — signature, hardened runtime,
+stapled tickets, Gatekeeper verdict for the app, the disk image (also as a quarantined download)
+and the app inside it, checksums and recent notarization history. Pass a path to check something
+else: `scripts/verify-release.sh release/v0.2.0`.
+
 Pushing a `v*` tag also builds a signed and notarized `.dmg` on GitHub Actions and attaches it to a
 draft release; the required repository secrets are listed in `.github/workflows/release.yml`.
 

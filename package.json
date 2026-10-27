@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "check": "vitest run && cargo test --workspace && cargo clippy --workspace --all-targets -- -D warnings",
-    "release": "./scripts/build-signed.sh"
+    "release": "./scripts/build-signed.sh",
+    "verify": "./scripts/verify-release.sh"
   },
   "dependencies": {
     "@fontsource-variable/literata": "^5.3.0",
