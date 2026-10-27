@@ -1,16 +1,67 @@
-# X Studio
+<p align="center">
+  <img src="docs/screenshots/library.png" alt="X Studio — your Xteink library, with covers, authors and page counts" width="860">
+</p>
 
-A macOS companion app for Xteink e-readers (X4, X4 Classic, X4 Pro, X3) running the
-[CrossInk](https://github.com/uxjulia/CrossInk) firmware — or upstream
-[CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) over Wi‑Fi.
+<h1 align="center">X Studio</h1>
 
-- **Books, sleep screens, fonts, dictionaries** — the reader's SD card sorted into sections, not a file tree
-- **Library view** in a grid with covers or as a list, with title, author, format and stable page counts
-- **Book editor** — title, author, language, series, folder; drop an image on the cover and see
-  exactly how it fills the screen (fill, fit or stretch), then write the EPUB back to the reader
-- **USB or Wi‑Fi** — the firmware's USB serial protocol (from the home screen) or its File Transfer server
+<p align="center">
+  <b>Your Xteink e-reader, finally with a proper Mac app.</b><br>
+  Books, covers, sleep screens and fonts — sorted, editable, one drag away.
+</p>
 
-Built with Tauri 2, Rust and Svelte 5.
+<p align="center">
+  <a href="https://github.com/billo32/x-studio/releases/latest"><b>Download for macOS</b></a> ·
+  X4 · X4 Classic · X4 Pro · X3 · Sticky ·
+  <a href="https://github.com/uxjulia/CrossInk">Works best with CrossInk ♥</a>
+</p>
+
+---
+
+Plug in the reader and X Studio opens your shelf, not a file browser. Every book shows up with its
+real cover, title, author and page count. Click one to fix the metadata or drop a new cover on it,
+and see exactly how it will look on your reader's screen before you save.
+
+## Why X Studio
+
+- **A library, not a folder tree.** The SD card is sorted into Books, Sleep & boot screens, Fonts,
+  Dictionaries and Other. Switch between a cover grid and a compact list, and search by title or author.
+- **Covers that fit.** Drag an image onto a book's cover. The preview shows how it fills the screen
+  of your model (480×800 or 528×792) — fill, fit or stretch — and X Studio bakes it to that size.
+- **Fix messy metadata.** Edit title, author, language and series, or move the book to another folder.
+  "Sapkovskiy_A._Vedmak6375365" becomes «Ведьмак» by Анджей Сапковский.
+- **Real page counts.** Stable pages (1,500 characters, the same measure CrossInk and KOReader use),
+  plus chapters and an estimated reading time, for every book on the card.
+- **Reliable uploads.** Drop files anywhere in the window or press *Add…*. Batches go through one by
+  one, and X Studio waits for the reader to be ready between files instead of failing halfway.
+- **USB or Wi‑Fi.** Connects on its own over USB‑C or the POGO cable, or over the reader's
+  File Transfer Wi‑Fi server — no setup, no drivers.
+- **Native, small and private.** A signed and notarized Mac app built with Rust. Nothing leaves your
+  computer; book info is cached locally so the second time is instant.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/connect.png" alt="Connect screen with an animated guide"></td>
+    <td width="50%"><img src="docs/screenshots/first-scan.png" alt="First scan reading titles, authors and covers"></td>
+  </tr>
+  <tr>
+    <td><b>Connect.</b> Wake the reader, plug it in — X Studio picks it up by itself.</td>
+    <td><b>First scan.</b> Titles, authors and covers are read once, then cached.</td>
+  </tr>
+</table>
+
+## Get it
+
+1. Download the `.dmg` from [Releases](https://github.com/billo32/x-studio/releases/latest)
+   (universal: Apple silicon and Intel, macOS 11 or later).
+2. Drag **X Studio** to Applications and open it.
+3. Wake your reader, stay on the home screen and plug it in.
+
+USB transfers need the [CrossInk](https://github.com/uxjulia/CrossInk) firmware.
+Upstream [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader) works over Wi‑Fi.
+
+> X Studio is an independent project and is not affiliated with Xteink.
 
 ## Develop
 

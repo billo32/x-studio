@@ -43,7 +43,8 @@ notarize "$ZIP"
 xcrun stapler staple "$APP"
 rm "$ZIP"; ditto -c -k --keepParent "$APP" "$ZIP"
 
-# .dmg: sign → notarize → staple
+# .dmg: staple the app inside → sign → notarize → staple
+scripts/staple-dmg-app.sh "$DMG"
 codesign --force --timestamp --sign "$ID" "$DMG"
 notarize "$DMG"
 xcrun stapler staple "$DMG"

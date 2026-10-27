@@ -43,6 +43,19 @@ else
   echo "⚠ No notarization credentials — signing only (Gatekeeper will warn on other Macs)."
 fi
 
+# Universal (Apple Silicon + Intel) unless a --target is given and rustup has both targets
+if [[ " $* " != *" --target"* ]]; then
+  export PATH="$HOME/.cargo/bin:$PATH"
+  if command -v rustup >/dev/null && rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null 2>&1 \
+     && [[ -d "$(rustc --print sysroot)/lib/rustlib/x86_64-apple-darwin" ]]; then
+    set -- --target universal-apple-darwin "$@"
+    echo "Building universal (Apple Silicon + Intel)"
+  else
+    echo "⚠ rustc $(command -v rustc) has no x86_64 target — building for this Mac only."
+    echo "  For universal builds: brew uninstall rust; install rustup (https://rustup.rs)."
+  fi
+fi
+
 # Tauri signs the .app (hardened runtime) and notarizes it when the API key or Apple ID variables are set
 npx tauri build --bundles app,dmg "$@"
 
@@ -63,6 +76,8 @@ if (( ${#notarize_args[@]} )); then
     xcrun notarytool submit "$ZIP" "${notarize_args[@]}" --wait
     xcrun stapler staple "$APP"
   fi
+  # Tauri packed the dmg before notarization: staple the copy inside it too
+  scripts/staple-dmg-app.sh "$DMG"
   # The DMG is notarized on its own so it opens without warnings
   codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$DMG"
   xcrun notarytool submit "$DMG" "${notarize_args[@]}" --wait
