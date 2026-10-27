@@ -174,29 +174,37 @@ impl WifiTransport {
         progress(0, total);
         set_timeout(&ws, Some(Duration::from_millis(2)))?;
         let mut acked = 0u64;
+        let mut done = false;
         for chunk in data.chunks(WS_CHUNK) {
             send(&mut ws, Message::binary(chunk.to_vec()))?;
-            // Pick up PROGRESS/ERROR without blocking the stream.
+            // Pick up PROGRESS/ERROR without blocking the stream. A fast reader can
+            // finish (DONE) before the last frames have been handed to the socket.
             while let Some(msg) = try_text(&mut ws)? {
+                if msg == "DONE" {
+                    done = true;
+                    break;
+                }
                 acked = handle_progress(&msg, acked)?;
                 progress(acked, total);
             }
         }
         set_timeout(&ws, Some(Duration::from_secs(30)))?;
-        loop {
+        while !done {
             let msg = next_text(&mut ws)?;
             if msg == "DONE" {
-                progress(total, total);
-                // Finish the close handshake so the reader frees the connection before the
-                // next file opens a new one.
-                let _ = ws.close(None);
-                let _ = set_timeout(&ws, Some(Duration::from_secs(1)));
-                while ws.read().is_ok() {}
-                return Ok(());
+                done = true;
+            } else {
+                acked = handle_progress(&msg, acked)?;
+                progress(acked, total);
             }
-            acked = handle_progress(&msg, acked)?;
-            progress(acked, total);
         }
+        progress(total, total);
+        // Finish the close handshake so the reader frees the connection before the
+        // next file opens a new one.
+        let _ = ws.close(None);
+        let _ = set_timeout(&ws, Some(Duration::from_secs(1)));
+        while ws.read().is_ok() {}
+        Ok(())
     }
 }
 
