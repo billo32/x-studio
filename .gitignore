@@ -1,0 +1,12 @@
+node_modules/
+dist/
+target/
+src-tauri/gen/
+.DS_Store
+# signing keys
+signing.env
+*.p8
+*.p12
+*.cer
+# release artifacts
+release/

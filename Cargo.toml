@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/x4-device", "crates/x4-books"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
