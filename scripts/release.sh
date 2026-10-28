@@ -69,6 +69,7 @@ else
 fi
 BUNDLE="target/$TARGET/release/bundle"
 DMG=$(ls -t "$BUNDLE"/dmg/*.dmg | head -1)
+
 cp "$DMG" "$OUT/XStudio-$VERSION-$ARCH_LABEL.dmg"
 (cd "$BUNDLE/macos" && ditto -c -k --keepParent "X Studio.app" "$OUT/XStudio-$VERSION-$ARCH_LABEL.app.zip")
 

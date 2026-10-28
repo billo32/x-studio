@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["src-tauri", "crates/x4-device", "crates/x4-books"]
+members = ["src-tauri", "crates/x4-device", "crates/x4-books", "crates/x4-epub", "crates/x4-plugins"]
 
 [workspace.package]
 edition = "2021"

@@ -3,6 +3,7 @@
 //! Everything works on in-memory bytes so the caller decides where files come
 //! from (the reader's SD card, a local cache, a drag-and-drop).
 
+pub mod cover;
 pub mod epub;
 pub mod fb2;
 pub mod imaging;

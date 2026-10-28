@@ -29,6 +29,9 @@ pub struct Preview {
     /// Size of the original image.
     pub width: u32,
     pub height: u32,
+    /// Baked-in bars and edge colors, for the cover editor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis: Option<crate::cover::Analysis>,
 }
 
 pub fn decode(bytes: &[u8]) -> Result<DynamicImage> {
@@ -55,6 +58,7 @@ pub fn preview(bytes: &[u8], max_w: u32, max_h: u32) -> Result<Preview> {
         img
     };
     Ok(Preview {
+        analysis: Some(crate::cover::analyze(&small)),
         data_url: jpeg_data_url(&small, 82)?,
         width,
         height,
@@ -89,6 +93,56 @@ pub fn encode(img: &RgbImage, ext: &str) -> Result<Vec<u8>> {
     Ok(out.into_inner())
 }
 
+/// 8-bit grayscale BMP (uncompressed, 256-entry gray palette, bottom-up rows) — the format
+/// CrossInk recommends for sleep and boot screens. Luma follows ITU-R BT.601.
+pub fn encode_gray_bmp(img: &RgbImage) -> Vec<u8> {
+    let (w, h) = img.dimensions();
+    let row = (w as usize + 3) & !3;
+    let pixels_at = 14 + 40 + 256 * 4;
+    let total = pixels_at + row * h as usize;
+    let mut out = Vec::with_capacity(total);
+    // BITMAPFILEHEADER
+    out.extend_from_slice(b"BM");
+    out.extend_from_slice(&(total as u32).to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&(pixels_at as u32).to_le_bytes());
+    // BITMAPINFOHEADER
+    out.extend_from_slice(&40u32.to_le_bytes());
+    out.extend_from_slice(&(w as i32).to_le_bytes());
+    out.extend_from_slice(&(h as i32).to_le_bytes()); // positive: bottom-up
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&8u16.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB
+    out.extend_from_slice(&((row * h as usize) as u32).to_le_bytes());
+    out.extend_from_slice(&2835u32.to_le_bytes()); // 72 dpi
+    out.extend_from_slice(&2835u32.to_le_bytes());
+    out.extend_from_slice(&256u32.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    for i in 0..=255u8 {
+        out.extend_from_slice(&[i, i, i, 0]);
+    }
+    for y in (0..h).rev() {
+        for x in 0..w {
+            let Rgb([r, g, b]) = *img.get_pixel(x, y);
+            let l = (299 * r as u32 + 587 * g as u32 + 114 * b as u32 + 500) / 1000;
+            out.push(l as u8);
+        }
+        out.resize(out.len() + row - w as usize, 0);
+    }
+    out
+}
+
+/// A picture made into a sleep screen: filled to `w`×`h` (cropping the overflow), grayscale BMP.
+pub fn sleep_screen(bytes: &[u8], w: u32, h: u32) -> Result<Vec<u8>> {
+    Ok(encode_gray_bmp(&bake(
+        bytes,
+        w,
+        h,
+        Fit::Cover,
+        [255, 255, 255],
+    )?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,5 +172,18 @@ mod tests {
         let p = preview(&src, 100, 100).unwrap();
         assert_eq!((p.width, p.height), (200, 300));
         assert!(p.data_url.starts_with("data:image/jpeg;base64,"));
+    }
+
+    #[test]
+    fn gray_bmp_round_trips() {
+        let bmp = sleep_screen(&sample(300, 200), 481, 800).unwrap();
+        assert_eq!(&bmp[..2], b"BM");
+        assert_eq!(u16::from_le_bytes([bmp[28], bmp[29]]), 8);
+        assert_eq!(bmp.len(), 14 + 40 + 1024 + 484 * 800);
+        let back = decode(&bmp).unwrap();
+        assert_eq!(back.dimensions(), (481, 800));
+        // Left half was red (luma 60), right half blue (luma 23): both dark, red lighter.
+        let px = |x| back.to_luma8().get_pixel(x, 400).0[0];
+        assert!(px(100) > px(380), "{} vs {}", px(100), px(380));
     }
 }

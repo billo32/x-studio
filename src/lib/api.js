@@ -18,6 +18,8 @@ export const api = {
   rename: (from, to) => invoke("rename_path", { from, to }),
   /** items: [[id, localPath], …] */
   upload: (items, destDir, overwrite) => invoke("upload_files", { items, destDir, overwrite }),
+  /** Pictures → grayscale BMP sleep screens of the given size. */
+  uploadSleep: (items, destDir, width, height) => invoke("upload_sleep_images", { items, destDir, width, height }),
   download: (path, saveTo) => invoke("download_file", { path, saveTo }),
   // books and images
   bookInfo: (path, size) => invoke("book_info", { path, size }),
@@ -26,7 +28,19 @@ export const api = {
   loadLocalImage: (localPath) => invoke("load_local_image", { localPath }),
   saveBook: (path, size, input) => invoke("save_book", { path, size, input }),
   exportBook: (path, size, input, saveTo) => invoke("export_book", { path, size, input, saveTo }),
+  // CrossInk's font library
+  fontCatalog: () => invoke("font_catalog"),
+  installFont: (family, sizes, root) => invoke("install_font", { family, sizes, root }),
   onTransfer: (cb) => listen("transfer", (e) => cb(e.payload)),
+  // plugins (src-tauri/src/plugins.rs)
+  plugins: () => invoke("plugins_list"),
+  pluginInspect: (path) => invoke("plugin_inspect", { path }),
+  pluginInstall: (path) => invoke("plugin_install", { path }),
+  pluginRemove: (id, keepData) => invoke("plugin_remove", { id, keepData }),
+  pluginSetEnabled: (id, enabled) => invoke("plugin_set_enabled", { id, enabled }),
+  pluginSaveFile: (path, data) => invoke("plugin_save_file", { path, data }),
+  readBookBytes: (path) => invoke("read_book_bytes", { path }),
+  writeBookBytes: (path, data) => invoke("write_book_bytes", { path, data }),
 };
 
 export function joinPath(dir, name) {

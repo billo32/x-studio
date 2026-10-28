@@ -6,8 +6,9 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
+use x4_books::cover::{self, Layout};
 use x4_books::epub::Edits;
-use x4_books::imaging::{self, Fit, Preview};
+use x4_books::imaging::{self, Preview};
 use x4_books::{BookInfo, Format};
 use x4_device::{join_path, split_path, Entry, Transport};
 
@@ -193,11 +194,10 @@ pub async fn load_local_image(local_path: String) -> CmdResult<Preview> {
 pub struct CoverInput {
     /// Local image to use; `None` re-bakes the book's current cover.
     pub source: Option<String>,
-    pub fit: Fit,
     pub width: u32,
     pub height: u32,
-    /// Bars for `contain`: "white" or "black".
-    pub background: String,
+    /// Crop, fit, zoom, shift and how the rest of the screen is filled.
+    pub layout: Layout,
 }
 
 #[derive(Deserialize)]
@@ -229,12 +229,7 @@ fn build(name: &str, bytes: &[u8], input: &SaveInput) -> CmdResult<Vec<u8>> {
                         .bytes
                 }
             };
-            let bg = if c.background == "black" {
-                [0, 0, 0]
-            } else {
-                [255, 255, 255]
-            };
-            let baked = imaging::bake(&src, c.width, c.height, c.fit, bg).map_err(err)?;
+            let baked = cover::compose(&src, c.width, c.height, &c.layout).map_err(err)?;
             Some((imaging::encode(&baked, "jpg").map_err(err)?, "jpg"))
         }
     };
@@ -277,7 +272,7 @@ pub async fn save_book(
     let data2 = data.clone();
     let (old, target) = (path.clone(), new_path.clone());
     let mut progress = crate::throttled_emitter(app.clone(), format!("save:{path}"), name.clone());
-    crate::with_device(&state, move |t: &mut dyn Transport| {
+    let written = crate::with_device(&state, move |t: &mut dyn Transport| {
         if target != old {
             // Wi-Fi mkdir fails on an existing folder; the rename below reports real problems.
             let _ = t.mkdir(&split_path(&target).0);
@@ -285,7 +280,15 @@ pub async fn save_book(
         }
         t.write(&target, &data2, true, &mut progress)
     })
-    .await?;
+    .await;
+    // Close the queue row either way, or it stays at 100% in the sidebar.
+    crate::emit_finished(
+        &app,
+        format!("save:{path}"),
+        name.clone(),
+        written.as_ref().err().cloned(),
+    );
+    written?;
     let _ = std::fs::write(state.cache.file(&new_path, new_size, "bin"), &*data);
     Ok(Entry {
         name,

@@ -2,6 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Plugin frames may only show plugin pages: a plugin can't navigate its frame to a
+         website (and carry data there in the URL). Nothing else is restricted here. -->
+    <meta http-equiv="Content-Security-Policy" content="frame-src xsplugin: http://xsplugin.localhost" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>X Studio</title>
   </head>

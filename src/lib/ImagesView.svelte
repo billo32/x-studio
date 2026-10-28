@@ -19,10 +19,12 @@
 
 {#if images.length === 0}
   <div class="empty">
-    <p class="big">No images yet</p>
-    <p>Drop BMP or PNG files here — they go to /sleep and show while the reader sleeps.</p>
+    <p class="big">No sleep screens yet</p>
+    <p>Drop pictures here — X Studio fits them to the {model.width}×{model.height} screen, makes them grayscale BMP and puts them in /sleep.</p>
+    <p>Then on the reader choose <b>Settings → Display → Sleep Screen → Custom</b>. A random picture shows each time it sleeps.</p>
   </div>
 {:else}
+  <p class="how">Shown when <b>Settings → Display → Sleep Screen</b> is <b>Custom</b> or <b>Cover + Custom</b>. Boot screens come from /bootscreen.</p>
   <div class="grid" style:--ratio="{model.width} / {model.height}">
     {#each shown as img (img.path)}
       <figure>
@@ -59,6 +61,7 @@
   .sub { color: var(--ink-2); font-size: 12px; }
   .actions { display: flex; gap: 4px; margin-left: -4px; opacity: 0; transition: opacity 0.15s; }
   figure:hover .actions, figure:focus-within .actions { opacity: 1; }
+  .how { margin: -6px 0 0; color: var(--ink-2); }
   .empty { padding: 60px 20px; text-align: center; color: var(--ink-2); }
   .empty p { margin: 0 0 6px; }
   .big { font-family: var(--serif); font-size: 20px; color: var(--ink); }

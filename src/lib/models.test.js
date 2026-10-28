@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookFormat, destinationFor, detectModel, imageRole, modelById, sectionOf } from "./models.js";
+import { bookFormat, destinationFor, detectModel, fontsRoot, imageRole, installedFonts, modelById, sectionOf } from "./models.js";
 
 const file = (path) => ({ path, name: path.split("/").pop(), isDir: false, size: 1 });
 
@@ -9,7 +9,10 @@ describe("sectionOf", () => {
     ["/Gogol.fb2.zip", "books"],
     ["/notes.txt", "books"],
     ["/sleep/waves.bmp", "images"],
-    ["/cover.png", "images"],
+    ["/cover.png", "other"],
+    ["/Books/Greene/48 Laws.jpg", "other"],
+    ["/sleep.bmp", "images"],
+    ["/.bootscreen/logo.bmp", "images"],
     ["/fonts/Literata/Literata.ttf", "fonts"],
     ["/fonts/Literata/readme.txt", "fonts"],
     ["/dictionaries/Cambridge/Cambridge.idx", "dicts"],
@@ -53,5 +56,32 @@ describe("models", () => {
     expect(imageRole("/pic.png")).toBe("Image");
     expect(bookFormat("a.fb2.zip")).toBe("FB2");
     expect(bookFormat("a.epub")).toBe("EPUB");
+  });
+});
+
+const dir = (path) => ({ path, name: path.split("/").pop(), isDir: true, size: 0 });
+
+describe("fonts on the card", () => {
+  const entries = [
+    dir("/Fonts"),
+    file("/Fonts/26-Bitter.xtf"),
+    dir("/Fonts/Lora"),
+    file("/Fonts/Lora/Lora_14.cpfont"),
+    file("/Fonts/Lora/Lora_10.cpfont"),
+    dir("/Fonts/Inter"),
+    file("/Fonts/Inter/Inter-Regular.ttf"),
+    file("/Books/a.epub"),
+  ];
+
+  it("uses the folder as spelled on the card", () => {
+    expect(fontsRoot(entries)).toBe("/Fonts");
+    expect(fontsRoot([])).toBe("/fonts");
+  });
+
+  it("finds families and their sizes", () => {
+    const f = installedFonts(entries);
+    expect([...f.keys()].sort()).toEqual(["inter", "lora"]);
+    expect(f.get("lora")).toEqual({ name: "Lora", path: "/Fonts/Lora", sizes: [10, 14] });
+    expect(f.get("inter").sizes).toEqual([]);
   });
 });

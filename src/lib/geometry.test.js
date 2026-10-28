@@ -50,3 +50,48 @@ describe("describeFit", () => {
     expect(describeFit(528, 792, 528, 792, 792, "stretch")).toBe("Same proportions as the screen — no distortion.");
   });
 });
+
+import { describeLayout, fillFor, gaps, placeLayout, suggestLayout } from "./geometry.js";
+
+const side = (color, uniform = true) => ({ color, uniform });
+const analysis = (trim, uniform = true) => ({
+  trim,
+  top: side([250, 250, 250], uniform),
+  bottom: side([240, 240, 240], uniform),
+  left: side([250, 250, 250], uniform),
+  right: side([250, 250, 250], uniform),
+});
+
+describe("cover layout", () => {
+  it("zoom and shift work around the fitted placement", () => {
+    expect(placeLayout(1, 1, 400, 800, { fit: "stretch", zoom: 0.5, dx: 0.25 })).toEqual({ w: 200, h: 400, left: 200, top: 200 });
+    const g = placeLayout(600, 900, ...X4, { fit: "contain" });
+    expect(gaps(g, ...X4)).toMatchObject({ top: 40, bottom: 40, any: true });
+  });
+
+  it("a letterboxed 3:5 cover loses its bars and gets its own background extended", () => {
+    // 480×800 image whose middle 600 px is a 4:5 cover on white.
+    const img = { width: 480, height: 800, analysis: analysis({ x: 0, y: 0.125, w: 1, h: 0.75 }) };
+    expect(suggestLayout(img, ...X4)).toMatchObject({ trim: true, fit: "contain", fill: "extend" });
+  });
+
+  it("busy edges: fill when the crop is small, blur bars when it is not", () => {
+    const close = { width: 500, height: 800, analysis: analysis({ x: 0, y: 0, w: 1, h: 1 }, false) };
+    expect(suggestLayout(close, ...X4)).toMatchObject({ trim: false, fit: "cover" });
+    const square = { width: 800, height: 800, analysis: analysis({ x: 0, y: 0, w: 1, h: 1 }, false) };
+    expect(suggestLayout(square, ...X4)).toMatchObject({ fit: "contain", fill: "blur" });
+    const exact = { width: 480, height: 800 };
+    expect(suggestLayout(exact, ...X4)).toMatchObject({ fit: "cover", trim: false });
+  });
+
+  it("fills and descriptions", () => {
+    const a = analysis({ x: 0, y: 0, w: 1, h: 1 });
+    expect(fillFor("extend", a)).toEqual({ kind: "sides", top: [250, 250, 250], bottom: [240, 240, 240], left: [250, 250, 250], right: [250, 250, 250] });
+    expect(fillFor("extend", null)).toEqual({ kind: "color", color: [255, 255, 255] });
+    expect(fillFor("black")).toEqual({ kind: "color", color: [0, 0, 0] });
+    const g = placeLayout(600, 900, ...X4, { fit: "contain" });
+    expect(describeLayout(g, ...X4, 1, "contain", "extend")).toBe("Edges filled with the cover's own background.");
+    const c = placeLayout(600, 900, ...X4, { fit: "cover" });
+    expect(describeLayout(c, ...X4, 1, "cover", "extend")).toBe("53 px cropped across.");
+  });
+});

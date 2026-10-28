@@ -31,12 +31,19 @@ and see exactly how it will look on your reader's screen before you save.
   "Sapkovskiy_A._Vedmak6375365" becomes «Ведьмак» by Анджей Сапковский.
 - **Real page counts.** Stable pages (1,500 characters, the same measure CrossInk and KOReader use),
   plus chapters and an estimated reading time, for every book on the card.
+- **One-click fonts.** Browse CrossInk's font library — Literata, Bitter, Lora and more, with
+  Cyrillic and Greek — pick the sizes and install a family straight from your Mac.
+- **Sleep screens from any picture.** Drop a photo and X Studio fits it to the screen, makes it a
+  grayscale BMP and puts it where the firmware looks for custom sleep screens.
 - **Reliable uploads.** Drop files anywhere in the window or press *Add…*. Batches go through one by
   one, and X Studio waits for the reader to be ready between files instead of failing halfway.
 - **USB or Wi‑Fi.** Connects on its own over USB‑C or the POGO cable, or over the reader's
   File Transfer Wi‑Fi server — no setup, no drivers.
+- **Plugins.** Add book stores and book commands from a `.zip`. Plugins run sandboxed and reach
+  the network or the reader only as their permissions allow. See [PLUGINS.md](PLUGINS.md).
 - **Native, small and private.** A signed and notarized Mac app built with Rust. Nothing leaves your
-  computer; book info is cached locally so the second time is instant.
+  computer unless a plugin you installed is allowed to; book info is cached locally so the second
+  time is instant.
 
 ## Screenshots
 
@@ -107,7 +114,10 @@ crates/x4-device/   reader transports, independent of Tauri
   src/wifi.rs       File Transfer server: HTTP :80, WebSocket uploads :81, UDP discovery :8134
   tests/            in-memory models of the firmware for both transports
 crates/x4-books/    EPUB / FB2 / TXT metadata, stable pages, covers, EPUB rewriting
-src-tauri/          Tauri commands, book cache, transfer queue
+crates/x4-plugins/  plugin manifest, permissions, installing from ZIP
+crates/x4-epub/     EPUB clean-up for store downloads (from yaebook), offered to plugins
+plugin-sdk/         window.xstudio for plugin pages (served as /_sdk/ to every plugin)
+src-tauri/          Tauri commands, book cache, transfer queue, plugin host (plugins.rs)
 src/                UI (Svelte 5)
 scripts/            build, notarization and release scripts
 ```

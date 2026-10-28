@@ -3,11 +3,15 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open as openDialog, save as saveDialog, ask } from "@tauri-apps/plugin-dialog";
   import { api, formatSize, count, baseName } from "./api.js";
-  import { MODELS, modelById, detectModel, rememberModel, sectionOf, SECTIONS, destinationFor } from "./models.js";
+  import { MODELS, modelById, detectModel, rememberModel, sectionOf, SECTIONS, destinationFor, installedFonts } from "./models.js";
   import BooksView from "./BooksView.svelte";
   import ImagesView from "./ImagesView.svelte";
   import FilesView from "./FilesView.svelte";
+  import FontsView from "./FontsView.svelte";
   import BookEditor from "./BookEditor.svelte";
+  import PluginsView from "./plugins/PluginsView.svelte";
+  import { PluginHost, pluginUrl, currentTheme, bookActionsFor, toBase64, fromBase64, diagnose } from "./plugins/host.js";
+  import { invoke } from "@tauri-apps/api/core";
 
   let { status, onDisconnect } = $props();
 
@@ -20,6 +24,110 @@
   let view = $state(loadPref("view", "grid"));
   let query = $state("");
   let error = $state("");
+  let notice = $state(""); // non-error message (plugins' ui.toast)
+
+  // ---- plugins ----
+  let plugins = $state([]); // [{manifest, enabled, permissions}]
+  const running = $derived(plugins.filter((p) => p.enabled));
+  const pluginSections = $derived(running.filter((p) => p.manifest.contributes?.section || p.manifest.contributes?.settings));
+  const host = new PluginHost({
+    invoke,
+    theme: () => currentTheme(),
+    toast: (message, kind, m) => (kind === "error" ? (error = `${m.name}: ${message}`) : showNotice(`${m.name}: ${message}`)),
+    confirm: (message, opts, m) => ask(message, { title: m.name, okLabel: opts.okLabel ?? "OK", cancelLabel: opts.cancelLabel ?? "Cancel" }),
+    saveDialog: (name) => saveDialog({ defaultPath: name }),
+    bookNames: () => bySection.books.map((b) => b.name),
+    onSent: () => rescan(),
+    log: (level, message, m) => {
+      console[level === "error" ? "error" : "log"](`[${m.id}]`, message);
+      if (level === "error") {
+        pluginErrors[m.id] = [...(pluginErrors[m.id] ?? []), message].slice(-5);
+        // A page that broke shouldn't just sit on "Loading…".
+        error = `${m.name} hit an error: ${message}. Right-click → Inspect Element → Console has the details; reinstalling or updating the plugin may help.`;
+      }
+    },
+    onReady: (id) => {
+      ready[id] = true;
+      delete stuck[id];
+    },
+  });
+
+  // Plugin pages that haven't connected: shown with what the app could find out.
+  let ready = $state({}); // id → true once its SDK said hello
+  let loaded = $state({}); // id → the iframe fired "load"
+  let stuck = $state({}); // id → [diagnostic lines]
+  let pluginErrors = $state({}); // id → recent errors the page reported
+  const STARTUP = 6000;
+  function watchStart(p) {
+    const id = p.manifest.id;
+    ready[id] = false;
+    loaded[id] = false;
+    delete stuck[id];
+    setTimeout(async () => {
+      if (ready[id]) return;
+      stuck[id] = await diagnose(p.manifest);
+    }, STARTUP);
+  }
+
+  async function loadPlugins() {
+    try {
+      plugins = await api.plugins();
+      host.setPlugins(running.map((p) => p.manifest));
+    } catch (e) {
+      error = `Plugins: ${e}`;
+    }
+  }
+
+  let noticeTimer;
+  function showNotice(text) {
+    notice = text;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => (notice = ""), 5000);
+  }
+
+  /** Keeps a plugin's iframe registered with the host while it exists. */
+  function pluginFrame(node, p) {
+    const id = p.manifest.id;
+    host.attach(id, node);
+    watchStart(p);
+    const onLoad = () => (loaded[id] = true);
+    node.addEventListener("load", onLoad);
+    return {
+      destroy: () => {
+        node.removeEventListener("load", onLoad);
+        host.detach(id);
+      },
+    };
+  }
+
+  function openPlugin(id, view = "section") {
+    host.setView(id, view);
+    openSection(`plugin:${id}`);
+  }
+
+  const editingActions = $derived(editing ? bookActionsFor(plugins, editing.name) : []);
+  let actionBusy = $state("");
+  async function runBookAction(plugin, action) {
+    const entry = editing;
+    actionBusy = `${plugin.id}/${action.id}`;
+    try {
+      const data = fromBase64(await api.readBookBytes(entry.path));
+      const result = await host.invoke(plugin.id, `action.${action.id}`, { name: entry.name, path: entry.path, data });
+      if (result?.data) {
+        await api.writeBookBytes(entry.path, toBase64(result.data));
+        const updated = { ...entry, size: result.data.length };
+        entries = entries.map((e) => (e.path === entry.path ? updated : e));
+        delete cards[entry.path];
+        if (editing?.path === entry.path) editing = updated;
+        api.bookInfo(updated.path, updated.size).then((c) => (cards[updated.path] = c)).catch(() => {});
+        showNotice(`${action.title}: done`);
+      }
+    } catch (e) {
+      error = `${action.title}: ${e.message ?? e}`;
+    } finally {
+      actionBusy = "";
+    }
+  }
 
   let cards = $state({}); // path → BookCard
   let thumbs = $state({}); // path → Preview
@@ -72,20 +180,26 @@
     if (gen === generation) readBooks(gen);
   }
 
-  // Reads books one by one in the background: title, author, cover, stats.
+  // Reads books in the background: title, author, cover, stats. The reader sends one file at
+  // a time (about 400 KB/s over USB), so two requests are kept in flight: while one book is
+  // parsed on the Mac, the next one is already coming over the cable.
   async function readBooks(gen) {
     const todo = bySection.books.filter((b) => !cards[b.path]);
     meta = { done: 0, total: todo.length };
-    for (const b of todo) {
-      if (gen !== generation) return;
-      try {
-        cards[b.path] = await api.bookInfo(b.path, b.size);
-      } catch (e) {
-        console.warn("book_info", b.path, e);
+    let next = 0;
+    const worker = async () => {
+      while (next < todo.length && gen === generation) {
+        const b = todo[next++];
+        try {
+          cards[b.path] = await api.bookInfo(b.path, b.size);
+        } catch (e) {
+          console.warn("book_info", b.path, e);
+        }
+        if (gen === generation) meta = { done: meta.done + 1, total: meta.total };
       }
-      meta = { done: meta.done + 1, total: meta.total };
-    }
-    if (section === "images") readThumbs(gen);
+    };
+    await Promise.all([worker(), worker()]);
+    if (gen === generation && section === "images") readThumbs(gen);
   }
 
   let thumbsRunning = false;
@@ -128,7 +242,9 @@
       transfers = [...transfers, ...items.map(([id, p]) => ({ id, name: baseName(p), done: 0, total: 0, state: "queued" }))];
       try {
         if (dest !== "/") await api.makeDir(dest).catch(() => {});
-        await api.upload(items, dest, true);
+        // Pictures become proper sleep screens: screen-sized grayscale BMP.
+        if (dest === "/sleep") await api.uploadSleep(items, dest, model.width, model.height);
+        else await api.upload(items, dest, true);
       } catch (e) {
         error = String(e);
       }
@@ -136,10 +252,16 @@
     rescan();
   }
 
+  /** Adds rows to the transfer queue (events for them update them later). */
+  function queueRows(rows) {
+    const fresh = rows.filter((r) => !transfers.some((t) => t.id === r.id && (t.state === "queued" || t.state === "running")));
+    transfers = [...transfers.filter((t) => !fresh.some((r) => r.id === t.id)), ...fresh.map((r) => ({ ...r, done: 0, total: 0, state: "queued" }))];
+  }
+
   async function addFiles() {
     const filters = {
       books: [{ name: "Books", extensions: ["epub", "fb2", "txt", "xtc", "xtch"] }],
-      images: [{ name: "Images", extensions: ["bmp", "png"] }],
+      images: [{ name: "Pictures", extensions: ["bmp", "png", "jpg", "jpeg", "webp"] }],
       fonts: [{ name: "Fonts", extensions: ["ttf", "otf", "cpfont"] }],
     }[section] ?? [];
     const picked = await openDialog({ multiple: true, filters: [...filters, { name: "All files", extensions: ["*"] }] });
@@ -188,7 +310,12 @@
 
   onMount(() => {
     rescan();
-    const unlisten = [];
+    host.start();
+    loadPlugins();
+    const dark = matchMedia("(prefers-color-scheme: dark)");
+    const onScheme = () => host.broadcastTheme(currentTheme());
+    dark.addEventListener("change", onScheme);
+    const unlisten = [() => host.stop(), () => dark.removeEventListener("change", onScheme)];
     api.onTransfer((ev) => {
       let i = transfers.findIndex((t) => t.id === ev.id);
       if (i < 0) {
@@ -237,14 +364,14 @@
   });
 
   const header = $derived.by(() => {
-    const n = bySection[section].length;
+    const n = bySection[section]?.length ?? 0;
     switch (section) {
       case "books": {
         const pages = bySection.books.reduce((s, b) => s + (cards[b.path]?.pages ?? 0), 0);
         return { title: "Books", sub: `${count(n, "book")} on the reader` + (pages ? ` · ${count(pages, "page")}` : "") };
       }
-      case "images": return { title: "Sleep & boot screens", sub: `${count(n, "image")} · ${model.width}×${model.height} screen` };
-      case "fonts": return { title: "Fonts", sub: "TTF and .cpfont files in /fonts" };
+      case "images": return { title: "Sleep & boot screens", sub: `${count(n, "image")} · drop pictures to add them as ${model.width}×${model.height} screens` };
+      case "fonts": return { title: "Fonts", sub: `${count(installedFonts(entries).size, "family", "families")} on the reader` };
       case "dicts": return { title: "Dictionaries", sub: "StarDict dictionaries in /dictionaries" };
       default: return { title: "Other", sub: count(n, "file") };
     }
@@ -273,7 +400,8 @@
       <span class="sub">{scanning ? "Reading the SD card…" : `${count(files.length, "file")} · ${formatSize(usedBytes)}`}</span>
       <div class="device-actions">
         <button class="link" onclick={rescan} disabled={scanning}>Refresh</button>
-        <button class="link" onclick={disconnect}>Disconnect</button>
+        <!-- Over USB the app reconnects on its own, so there is nothing to disconnect. -->
+        {#if status.transport !== "usb"}<button class="link" onclick={disconnect}>Disconnect</button>{/if}
       </div>
     </div>
 
@@ -291,6 +419,21 @@
           <span class="count">{bySection[s.id].length}</span>
         </button>
       {/each}
+      <span class="divider" aria-hidden="true"></span>
+      {#each pluginSections.filter((p) => p.manifest.contributes?.section) as p (p.manifest.id)}
+        <button class="section" class:on={section === `plugin:${p.manifest.id}` && !editing} onclick={() => openPlugin(p.manifest.id)}>
+          <span class="icon" aria-hidden="true">
+            {#if p.manifest.icon}<img class="picon" src={pluginUrl(p.manifest.id, p.manifest.icon)} alt="" />
+            {:else}<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 4h6v3a2 2 0 104 0V4h1v16H4V4h1v3a2 2 0 104 0z"></path></svg>{/if}
+          </span>
+          <span class="label">{p.manifest.contributes.section.title}</span>
+        </button>
+      {/each}
+      <button class="section" class:on={section === "plugins" && !editing} onclick={() => openSection("plugins")}>
+        <span class="icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 4a2 2 0 114 0v2h4v4h-2a2 2 0 100 4h2v4h-4v-2a2 2 0 10-4 0v2H6v-4h2a2 2 0 100-4H6V6h4z"></path></svg></span>
+        <span class="label">Plugins</span>
+        <span class="count">{running.length || ""}</span>
+      </button>
     </div>
 
     {#if active}
@@ -312,11 +455,57 @@
     {#if error}
       <div class="banner" role="alert"><span>{error}</span><button class="link" onclick={() => (error = "")}>Dismiss</button></div>
     {/if}
+    {#if notice}
+      <div class="banner info" role="status"><span>{notice}</span><button class="link" onclick={() => (notice = "")}>Dismiss</button></div>
+    {/if}
+
+    <!-- Every running plugin keeps its page loaded (it may serve book actions);
+         only the open one is shown. -->
+    <div class="frames" class:shown={!editing && section.startsWith("plugin:")}>
+      {#each running as p (`${p.manifest.id}@${p.manifest.version}`)}
+        <iframe
+          use:pluginFrame={p}
+          class:on={section === `plugin:${p.manifest.id}`}
+          title={p.manifest.name}
+          src={pluginUrl(p.manifest.id, p.manifest.entry)}
+          sandbox="allow-scripts"
+          referrerpolicy="no-referrer"
+          allow=""
+        ></iframe>
+        {#if section === `plugin:${p.manifest.id}` && stuck[p.manifest.id]}
+          <div class="stuck">
+            <p class="big">{p.manifest.name} didn't start</p>
+            <p>Its page didn't connect to X Studio. What the app could check:</p>
+            <ul>
+              <li>Frame load event: {loaded[p.manifest.id] ? "yes" : "no"}</li>
+              {#each stuck[p.manifest.id] as line (line)}<li>{line}</li>{/each}
+              {#each pluginErrors[p.manifest.id] ?? [] as e (e)}<li>Page error: {e}</li>{/each}
+            </ul>
+            <p class="hint">Right-click here → Inspect Element → Console shows the full reason (look for “Refused”, “blocked” or a 404).</p>
+            <button onclick={() => { const f = document.querySelector(`iframe[title="${p.manifest.name}"]`); if (f) { watchStart(p); f.src = f.src; } }}>Reload plugin page</button>
+          </div>
+        {/if}
+      {/each}
+    </div>
 
     {#if editing}
+      {#if editingActions.length}
+        <div class="plugin-actions">
+          <span class="pa-label">Plugins</span>
+          {#each editingActions as { plugin, action } (`${plugin.id}/${action.id}`)}
+            <button onclick={() => runBookAction(plugin, action)} disabled={!!actionBusy} title={plugin.name}>
+              {actionBusy === `${plugin.id}/${action.id}` ? "Working…" : action.title}
+            </button>
+          {/each}
+        </div>
+      {/if}
       {#key editing.path}
         <BookEditor bind:this={editor} entry={editing} card={cards[editing.path]} {modelId} deviceName={model.name} onClose={() => (editing = null)} {onSaved} onRemove={remove} />
       {/key}
+    {:else if section === "plugins"}
+      <PluginsView {plugins} onChanged={loadPlugins} onOpenSettings={(id) => openPlugin(id, "settings")} onError={(e) => (error = e)} />
+    {:else if section.startsWith("plugin:")}
+      <!-- the plugin's frame is shown above -->
     {:else}
       <div class="page">
         <header class="head">
@@ -328,7 +517,7 @@
             <label class="search">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
               <span class="sr">Search</span>
-              <input bind:value={query} placeholder={section === "books" ? "Title or author" : "File name"} />
+              <input bind:value={query} placeholder={section === "books" ? "Title or author" : section === "fonts" ? "Font name" : "File name"} />
             </label>
             {#if section === "books"}
               <div class="seg" role="group" aria-label="View">
@@ -351,14 +540,14 @@
         {:else if section === "images"}
           <ImagesView images={bySection.images} {thumbs} {model} {query} onDownload={download} onRemove={remove} />
         {:else if section === "fonts"}
-          <FilesView files={bySection.fonts} grouped {query} emptyTitle="No fonts" emptyText="Drop a TTF file — it goes to /fonts. X4 Classic, X4 Pro and Sticky pick up TTF fonts right away." onDownload={download} onRemove={remove} />
+          <FontsView {entries} files={bySection.fonts} {query} {transfers} onQueue={queueRows} onDownload={download} onRemove={remove} onInstalled={rescan} onError={(e) => (error = e)} />
         {:else if section === "dicts"}
           <FilesView files={bySection.dicts} grouped {query} emptyTitle="No dictionaries" emptyText="Put a StarDict folder (.dict, .idx, .ifo) into /dictionaries." onDownload={download} onRemove={remove} />
         {:else}
           <FilesView files={bySection.other} {query} emptyTitle="Nothing else here" emptyText="Files that are not books, images, fonts or dictionaries show up here." onDownload={download} onRemove={remove} />
         {/if}
 
-        <p class="footnote">Drop files onto the window — books go to /Books, images to /sleep, fonts to /fonts.</p>
+        <p class="footnote">Drop files onto the window — books go to /Books, pictures become sleep screens in /sleep, fonts go to /fonts.</p>
       </div>
     {/if}
   </main>
@@ -391,6 +580,22 @@
   .section.on { background: var(--sheet); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
   .icon { display: flex; width: 18px; justify-content: center; }
   .label { flex: 1; }
+  .divider { height: 1px; margin: 8px 10px; background: var(--rule); }
+  .picon { width: 17px; height: 17px; object-fit: contain; }
+
+  .frames { display: none; position: absolute; inset: 0; }
+  .frames.shown { display: block; }
+  .frames iframe { display: none; width: 100%; height: 100%; border: 0; background: var(--paper); }
+  .frames iframe.on { display: block; }
+  .stuck { position: absolute; inset: 0; z-index: 1; padding: 40px 32px; background: var(--paper); display: flex; flex-direction: column; gap: 10px; align-items: flex-start; overflow: auto; }
+  .stuck p { margin: 0; color: var(--ink-2); }
+  .stuck .big { font-family: var(--serif); font-size: 20px; color: var(--ink); }
+  .stuck ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-family: var(--mono); font-size: 12px; display: flex; flex-direction: column; gap: 3px; user-select: text; -webkit-user-select: text; }
+  .stuck .hint { font-size: 12px; color: var(--ink-3); }
+  .banner { position: relative; z-index: 2; }
+  .banner.info { border-color: var(--rule-strong); color: var(--ink-2); background: var(--sheet); }
+  .plugin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 32px 0; }
+  .pa-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
   .count { color: var(--ink-3); font-variant-numeric: tabular-nums; font-weight: 400; }
 
   .task { margin-top: auto; display: flex; flex-direction: column; gap: 7px; padding: 12px; border: 1px dashed var(--ink-3); border-radius: 10px; }
