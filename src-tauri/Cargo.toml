@@ -1,0 +1,28 @@
+[package]
+name = "x-studio"
+description = "Desktop companion for Xteink readers on CrossInk firmware"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "x_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+x4-device = { path = "../crates/x4-device" }
+x4-books = { path = "../crates/x4-books" }
+x4-epub = { path = "../crates/x4-epub" }
+x4-plugins = { path = "../crates/x4-plugins" }
+crc32fast = "1.4"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+# HTTPS for the CrossInk font library
+ureq = { version = "2.12", default-features = false, features = ["tls"] }

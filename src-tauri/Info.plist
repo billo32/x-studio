@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- macOS 15+ asks before an app talks to the local network (Wi‑Fi discovery and transfer). -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>X Studio finds your e-reader on the local network and transfers books to it over Wi‑Fi.</string>
+</dict>
+</plist>

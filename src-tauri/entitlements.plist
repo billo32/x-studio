@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Hardened runtime, not sandboxed: the app needs USB serial ports (/dev/cu.*) and the
+       local network, which a non-sandboxed Developer ID app may use without extra entitlements.
+       Kept as an explicit, empty list so additions are reviewed. -->
+</dict>
+</plist>

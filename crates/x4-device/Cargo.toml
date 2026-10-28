@@ -1,0 +1,16 @@
+[package]
+name = "x4-device"
+description = "Transports for Xteink X3/X4 readers running CrossInk/CrossPoint firmware (USB serial and Wi-Fi)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# No libudev on Linux; macOS uses IOKit, which needs no extra features.
+serialport = { version = "4.7", default-features = false }
+tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+ureq = { version = "2.12", default-features = false, features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+crc32fast = "1.4"
+thiserror = "2"
