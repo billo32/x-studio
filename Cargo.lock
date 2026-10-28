@@ -5325,7 +5325,7 @@ dependencies = [
 
 [[package]]
 name = "x-studio"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "crc32fast",
@@ -5365,7 +5365,7 @@ dependencies = [
 
 [[package]]
 name = "x4-books"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "encoding_rs",
@@ -5379,7 +5379,7 @@ dependencies = [
 
 [[package]]
 name = "x4-device"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "crc32fast",
  "serde",
@@ -5392,7 +5392,7 @@ dependencies = [
 
 [[package]]
 name = "x4-epub"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "flate2",
  "html5ever 0.27.0",
@@ -5407,7 +5407,7 @@ dependencies = [
 
 [[package]]
 name = "x4-plugins"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
